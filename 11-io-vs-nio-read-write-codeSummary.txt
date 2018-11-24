@@ -1,0 +1,227 @@
+==== READ / WRITE USING BUFFERS AND STREAMS ====
+
+
+FileReaderWriter-stringDataOnlyNotFullObj:
+Path locPath = FileSystems.getDefault().getPath("locations_testing_nio.txt");
+try (BufferedWriter locWriter = Files.newBufferedWriter(locPath)) { // using nio
+try (FileWriter locFile = new FileWriter("locations.txt")) { // using io
+  for (Location location : locations.values()) {
+    locFile.write(... + '\n');
+} catch (IOException e) {}
+Path locPath = FileSystems.getDefault().getPath("locations_testing_nio.txt");
+BufferedReader reader = Files.newBufferedReader(Paths.get("locations_big.txt")); // using nio
+BufferedReader reader = new BufferedReader(new FileReader("directions_big.txt")); // using io
+try (BufferedReader reader = Files.newBufferedReader(Paths.get("locations_big.txt"))) {
+  while ((line = reader.readLine()) != null) {
+} catch (IOException e) {}
+
+
+ReadWriteBinaryData-stringDataOnlyNotFullObj:
+order of reading and writing must be followed to reverse engr each other
+try (DataInputStream binaryReader = new DataInputStream(new BufferedInputStream(new FileInputStream("locations.dat")))) {
+  boolean eof = false;
+    while (!eof) {
+      try {
+        binaryReader.readInt();
+        binaryReader.readUTF();
+        binaryReader.readInt(); // # of exits is also saved to determine loop count coz u cant even query that on a binary data
+      } catch(EOFException e) {}
+} catch (IOException e) {}  
+try (DataOutputStream binaryWriter = new DataOutputStream(new BufferedOutputStream(new FileOutputStream("locations.dat")))) {
+  binaryWriter.writeInt(...);
+  binaryWriter.writeUTF(...);
+  binaryWriter.writeInt(...); // write also the # of loops as a heads up for collection reading later
+} catch (IOException e) {}  
+
+
+ReadWriteBinaryData-FullObj:
+Path locFile = FileSystems.getDefault().getPath("locations_nio.dat");
+try (ObjectInputStream serialInStream = new ObjectInputStream(new BufferedInputStream(Files.newInputStream(locFile)))) { // using nio
+try (ObjectInputStream readIn = new ObjectInputStream(new BufferedInputStream(new FileInputStream("locations.dat")))) { // using io
+  boolean eof = false;
+    while (!eof) {
+      try {
+        Location loc = (Location) readIn.readObject();
+      } catch(EOFException e) {}
+} catch (InvalidClassException e) {
+} catch (IOException e) {
+} catch (ClassNotFoundException e) {}
+try (ObjectOutputStream writeOut = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream("locations.dat")))) { // using all io
+Path locPath = FileSystems.getDefault().getPath("locations_nio.dat");
+try (ObjectOutputStream serialOutStream = new ObjectOutputStream(new BufferedOutputStream(Files.newOutputStream(locPath)))) { // using nio.Files & Paths
+  for (Location location : locations.values()) {
+    writeOut.writeObject(location);
+} catch (IOException e) {}  
+
+
+
+RandomAccessFile: weirdess 
+try {
+  ra = new RandomAccessFile("locations_rand.dat", "rwd");
+  // ra.close(); needs to stay open and only executed via public method when user quits
+} catch (IOException e) {}  
+try (RandomAccessFile randFile = new RandomAccessFile("locations_rand.dat", "rwd")) {
+  randFile.writeInt(loc.getLocationId());
+  randFile.writeUTF(loc.getDesc());
+  randFile.seek();
+  startPointer = (int) randFile.getFilePointer();
+} catch (IOException e) {}  
+
+
+
+
+==== READ / WRITE OF BYTEBUFFER INTO CHANNELS (FROM FILE IN/OUT STREAMS) ====
+
+WRITING
+
+// step1 : initialize the channel from a file stream
+try(FileOutputStream binFile = new FileOutputStream("data.dat");
+    FileChannel binFileChannel = binFile.getChannel()) {
+} catch (IOException e) {
+    e.printStackTrace();
+}
+
+
+// step2 : initialize ByteBuffer with some size
+ByteBuffer byteBuffer = ByteBuffer.allocate(100);
+
+
+// step3 : put data into ByteBuffer
+string => byte[] => saved into this BYTEBUFFER (allocated with some size)
+primitives => saved into same BYTEBUFFER or BYTEBUFFER specific to primitive type
+
+byteBuffer.put("Hello World!".getBytes());
+byteBuffer.putInt(245);
+byteBuffer.putInt(-98765);
+byteBuffer.put("Nice to meet you".getBytes());
+byteBuffer.putInt(1000);
+
+
+// step4 : write ByteBuffer into the channel
+binFileChannel.write(byteBuffer.flip());
+
+/* IMPORTANT : in a 100-byte ByteBuffer with 40-byte occupied,
+   there is a remaining 60-byte. if u do Channel.write() with
+   no flipping (bPos@40), then the data written wud be the
+   remaining 60-byte (which shud not be).
+
+   if position is manipulated, new bPos = starting point with
+   eob (end of buffer) = ending point
+
+   if position is not manipulated, @flip will make @0 = starting point
+   and current/old bPos = ending point
+
+   if position is manipulated then @flip, @flip makes @0 = starting
+   point and new bPos = ending point */
+   
+   
+
+READING
+
+FileInputStream fileIn = new FileInputStream("data.txt");
+FileChannel channel = fileIn.getChannel();
+
+try (RandomAccessFile ra = new RandomAccessFile("data2.dat", "rwd");
+     FileChannel raChannel = ra.getChannel()) {
+
+    // step2 : initialize ByteBuffer for size (so that channel can do its piping)
+    ByteBuffer readByteBuffer = ByteBuffer.allocate(100);
+    System.out.println("readByteBuffer.position after allocate: " + readByteBuffer.position() + '\n');
+
+    // step3 : channel to pipe the stream into readByteBuffer
+    int numByteRead = raChannel.read(readByteBuffer);
+    System.out.println("numByteRead: " + numByteRead);
+    System.out.println("readByteBuffer.position after piping: " + readByteBuffer.position() + '\n');
+
+    // step4 : read the data from the readByteBuffer
+    readByteBuffer.flip();
+    System.out.println("readByteBuffer.position after flip: " + readByteBuffer.position() + '\n');
+
+    byte[] inputString = new byte[12];
+    readByteBuffer.get(inputString);
+    System.out.println("1st reading: " + new String(inputString));
+
+    System.out.println("2nd reading: " + readByteBuffer.getInt());
+    System.out.println("3rd reading: " + readByteBuffer.getInt());
+
+    byte[] inputString2 = new byte["Nice to meet you".toCharArray().length];
+    readByteBuffer.get(inputString2);
+    System.out.println("4th reading: " + new String(inputString2));
+
+    System.out.println("5th reading: " + readByteBuffer.getInt());
+} catch (IOException e) {
+    e.printStackTrace();
+}
+
+
+FOR BYTEBUFFER-CHANNEL NON-SEQUENTIAL READWRITE:
+u have to take note of position after every read or write
+
+numByteRead = raChannel.position(int2Pos).read(intByteBuffer.flip());
+System.out.println("numByteRead for int2Pos: " + numByteRead);
+System.out.println("intByteBuffer.position after int2 read: " + intByteBuffer.position());
+System.out.println("reading int2: " + intByteBuffer.flip().getInt());
+System.out.println("intByteBuffer.position after int2 print: " + intByteBuffer.position() + '\n');
+
+if (str2 != null) {
+  ByteBuffer str2ByteBuffer = ByteBuffer.allocate(str2.length); // str2 is already a byte[]
+  numByteRead = raChannel.position(str2Pos).read(str2ByteBuffer); // sets the starting position 
+      and then read() will fill up the allocation on the ByteBuffer u provided. note however 
+      that it ur trying to include some int to ur original String only, then int will not be 
+      properly converted back to int.
+  System.out.println("numByteRead for str2: " + numByteRead);
+  if (str2ByteBuffer.hasArray())
+    System.out.println("str2ByteBuffer after read: " + new String(str2ByteBuffer.array()));
+}
+
+
+
+// WRITE REQUEST AND READ RESPONSE FROM SOCKET
+try {
+  // part1: parse url to get host, uri, port
+  URL url = new URL(args[0]);
+  String host = url.getHost();
+  String path = url.getPath();
+  int port = url.getPort();
+  if (port < 0) port = 80;
+
+  // part2: form the request header
+  String request = "GET " + path + " HTTP/1.1\n";
+  request += "host: " + host;
+  request += "\n\n";
+
+  // part3: open socket and then send request
+  Socket sock  = new Socket(host, port);
+  PrintWriter writer = new PrintWriter(sock.getOutputStream());
+  writer.print(request);
+  writer.flush();
+
+  // part4: read print response and then close socket
+  BufferedReader reader =
+          new BufferedReader(new InputStreamReader(sock.getInputStream()));
+  String next_record;
+  while ((next_record = reader.readLine()) != null)
+      System.out.println(next_record);
+  sock.close();
+} catch (MalformedURLException e) {
+  throw new RuntimeException("Please try again. Bad url.\n" + e);
+} catch (UnknownHostException e) {
+  throw new RuntimeException("Please try again. Unknown host.\n" + e);
+} catch (IOException e) {
+  throw new RuntimeException("Please try again. Something's wrong.\n" + e);
+}
+
+
+
+TOXML
+private String toXML() {
+    String xml = null;
+    try {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        XMLEncoder encoder = new XMLEncoder(out);
+        encoder.writeObject(predictions); // the prediction[] not this class so only Prediction class is serializable
+        encoder.close();
+        xml = out.toString();
+    } catch (Exception e) { }
+    return xml;
+}

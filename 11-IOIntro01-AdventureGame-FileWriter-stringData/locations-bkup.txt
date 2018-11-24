@@ -1,0 +1,6 @@
+0,You have left the game.
+1,You are in a road.
+2,You are at d top of a hill.
+3,You are inside a building.
+4,You are in d valley.
+5,You are in the forest.
